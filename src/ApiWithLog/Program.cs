@@ -1,12 +1,71 @@
+using ApiWithLog.Logging;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Get RabbitMQ configuration
+var rabbitMqConfig = builder.Configuration
+    .GetSection(RabbitMqConfiguration.SectionName)
+    .Get<RabbitMqConfiguration>() ?? new RabbitMqConfiguration();
+
+// Get application name from environment variable
+var applicationName = Environment.GetEnvironmentVariable("LOG_APPLICATION_NAME")
+                      ?? builder.Environment.ApplicationName;
+
 // Configure Serilog
-Log.Logger = new LoggerConfiguration()
+var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Debug()
-    .WriteTo.Console()
-    .CreateLogger();
+    .WriteTo.Console();
+
+using var sink = await CustomRabbitMqSink.CreateAsync(
+    hostName: rabbitMqConfig.HostName,
+    port: rabbitMqConfig.Port,
+    userName: rabbitMqConfig.UserName,
+    password: rabbitMqConfig.Password,
+    queueName: rabbitMqConfig.QueueName,
+    applicationName: applicationName,
+    formatProvider: null);
+
+// Use custom sink with array format: ["applicationName", "clientDateTime", "logMessage"]
+loggerConfig.WriteTo.CustomRabbitMq(sink);
+
+// Add RabbitMQ sink if enabled
+/*
+if (rabbitMqConfig.Enabled)
+{
+    var minimumLevel = Enum.Parse<LogEventLevel>(rabbitMqConfig.MinimumLevel, true);
+
+    if (rabbitMqConfig.UseCustomSink)
+    {
+        
+    }
+    else
+    {
+        // Use standard Serilog.Sinks.RabbitMQ (JSON object format)
+        var rabbitMqSinkConfig = new RabbitMQClientConfiguration
+        {
+            DeliveryMode = RabbitMQDeliveryMode.Durable,
+            Exchange = rabbitMqConfig.QueueName,
+            ExchangeType = "direct"
+        };
+
+        loggerConfig.WriteTo.RabbitMQ((clientConfiguration, sinkConfiguration) =>
+        {
+            clientConfiguration.Hostnames.Add(rabbitMqConfig.HostName);
+            clientConfiguration.Port = rabbitMqConfig.Port;
+            clientConfiguration.Username = rabbitMqConfig.UserName;
+            clientConfiguration.Password = rabbitMqConfig.Password;
+            clientConfiguration.DeliveryMode = RabbitMQDeliveryMode.Durable;
+            clientConfiguration.Exchange = rabbitMqConfig.QueueName;
+            clientConfiguration.ExchangeType = "direct";
+
+            sinkConfiguration.RestrictedToMinimumLevel = minimumLevel;
+        });
+    }
+}
+*/
+
+Log.Logger = loggerConfig.CreateLogger();
 
 builder.Host.UseSerilog();
 
@@ -48,6 +107,24 @@ app.MapGet("/weatherforecast", (ILogger<Program> logger) =>
     return forecast;
 })
 .WithName("GetWeatherForecast")
+.WithOpenApi();
+
+app.MapGet("/error", (ILogger<Program> logger) =>
+{
+    try
+    {
+        var val1 = 0;
+        var val2 = 0;
+        var val3 = val1 / val2;
+        return val3;
+    }
+    catch(Exception ex)
+    {
+        logger.LogError(ex, "Error happened");
+        throw;
+    }
+})
+.WithName("Error")
 .WithOpenApi();
 
 try
