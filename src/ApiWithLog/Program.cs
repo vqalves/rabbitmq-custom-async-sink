@@ -4,13 +4,9 @@ using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Get application name from environment variable
-var applicationName = Environment.GetEnvironmentVariable("LOG_APPLICATION_NAME")
-    ?? builder.Environment.ApplicationName;
-
 var loggerConfig = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .WriteTo.Console();
+    .MinimumLevel.Verbose()
+    .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information);
 
 await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
     hostName: "localhost",
@@ -18,7 +14,7 @@ await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
     userName: "guest",
     password: "guest",
     queueName: "application-logs",
-    bufferMaximumSize: 1_000,
+    bufferMaximumSize: 700,
     logFormatterForRabbitMQDefault: new LogFormatterForRabbitMQDefault(
         formatProvider: null
     ),
@@ -90,7 +86,7 @@ app.MapGet("/error", (ILogger<Program> logger) =>
 app.MapGet("/stress-log", (ILogger<Program> logger) =>
 {
     for(var i = 0; i < 1_000; i++)
-        logger.LogInformation("Stress test #{testNumber}", i);
+        logger.LogDebug("Stress test #{testNumber}", i);
 
     return Results.Ok();
 })

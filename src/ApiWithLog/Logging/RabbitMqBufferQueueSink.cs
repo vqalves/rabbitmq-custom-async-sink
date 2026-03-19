@@ -11,17 +11,15 @@ namespace ApiWithLog.Logging;
 /// <summary>
 /// Custom Serilog sink that retrieves logs from buffers and sends them to RabbitMQ asynchronously via a background synchronizer.
 /// </summary>
-public class RabbitMqSyncToAsyncSink : ILogEventSink
+public class RabbitMqBufferQueueSink : ILogEventSink
 {
-    public const string InternalLogProperty = nameof(RabbitMqSyncToAsyncSink);
-
-    private readonly SyncToAsyncBufferQueue _buffer;
+    private readonly RabbitMqBufferQueue _buffer;
     private readonly LogEventLevel _minimumLevel;
     private readonly ILogFormatterForRabbitMQ _logFormatterForRabbitMQ;
     private readonly ILogger _logger;
 
-    public RabbitMqSyncToAsyncSink(
-        SyncToAsyncBufferQueue buffer,
+    public RabbitMqBufferQueueSink(
+        RabbitMqBufferQueue buffer,
         ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
         LogEventLevel minimumLevel,
         ILogger logger)
@@ -45,10 +43,7 @@ public class RabbitMqSyncToAsyncSink : ILogEventSink
         }
         catch (Exception ex)
         {
-            using (LogContext.PushProperty(RabbitMqSyncToAsyncSink.InternalLogProperty, value: true))
-            {
-                _logger.Error(ex, "{SinkName}.{MethodName}: Error handling log event", nameof(RabbitMqSyncToAsyncSink), nameof(Emit));
-            }
+            _logger.Error(ex, "{SinkName}.{MethodName}: Error handling log event", nameof(RabbitMqBufferQueueSink), nameof(Emit));
         }
     }
 }
@@ -67,7 +62,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
-        var rabbitMqConfig = new RabbitMqConfiguration(
+        var rabbitMqConfig = RabbitMqConfiguration.Create(
             hostName: hostName,
             port: port,
             userName: userName, 
@@ -94,7 +89,9 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
-        var rabbitMqConfig = new RabbitMqConfiguration(rabbitMqConnectionString, rabbitMqQueueName);
+        var rabbitMqConfig = RabbitMqConfiguration.Create(
+            connectionString: rabbitMqConnectionString,
+            queueName: rabbitMqQueueName);
 
         await RabbitMQWithBackgroundServiceAsync(
             sinkConfiguration: sinkConfiguration,
@@ -119,21 +116,23 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             .WriteTo.Console()
             .CreateLogger();
 
-        var bufferQueue = new SyncToAsyncBufferQueue(bufferMaximumSize, bootstrapLogger);
+        var bufferQueue = new RabbitMqBufferQueue(
+            bufferMaxSize: bufferMaximumSize,
+            logger: bootstrapLogger);
 
-        var sink = new RabbitMqSyncToAsyncSink(
+        var sink = new RabbitMqBufferQueueSink(
             buffer: bufferQueue,
             logFormatterForRabbitMQ: logFormatterForRabbitMQDefault,
             minimumLevel: minimumLevel,
             logger: bootstrapLogger
         );
 
-        var syncWorker = await RabbitMqBufferSynchronizer.CreateNewAsync(bufferQueue, rabbitMqConfig, bootstrapLogger);
+        var syncWorker = await RabbitMqPublishBackgroundService.CreateNewAsync(
+            queue: bufferQueue,
+            rabbitMqConfiguration: rabbitMqConfig,
+            logger: bootstrapLogger);
 
-        sinkConfiguration.Logger(c => c.Filter
-            .ByExcluding(Matching.WithProperty(RabbitMqSyncToAsyncSink.InternalLogProperty))
-            .WriteTo.Sink(sink, minimumLevel)
-        );
+        sinkConfiguration.Sink(sink, minimumLevel);
 
         hostedServices.AddHostedService(p => syncWorker);
     }

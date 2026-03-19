@@ -4,19 +4,19 @@ using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
 
-public class RabbitMqBufferSynchronizer: BackgroundService
+public class RabbitMqPublishBackgroundService: BackgroundService
 {
-    private readonly SyncToAsyncBufferQueue _queue;
+    private readonly RabbitMqBufferQueue _queue;
     private readonly RabbitMqConfiguration _rabbitMqConfiguration;
     private readonly IConnection _connection;
     private readonly IChannel _channel;
     private readonly ILogger _logger;
     private bool _disposed;
 
-    private RabbitMqBufferSynchronizer(
+    private RabbitMqPublishBackgroundService(
         IConnection connection,
         IChannel channel,
-        SyncToAsyncBufferQueue queue,
+        RabbitMqBufferQueue queue,
         RabbitMqConfiguration rabbitMqConfiguration,
         ILogger logger)
     {
@@ -29,11 +29,8 @@ public class RabbitMqBufferSynchronizer: BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using (LogContext.PushProperty(RabbitMqSyncToAsyncSink.InternalLogProperty, value: true))
-        {
-            _logger.Information("{ServiceName}.{MethodName}: BackgroundService started",
-                nameof(RabbitMqBufferSynchronizer), nameof(ExecuteAsync));
-        }
+        _logger.Information("{ServiceName}.{MethodName}: BackgroundService started",
+            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
 
         var properties = new BasicProperties
         {
@@ -59,11 +56,8 @@ public class RabbitMqBufferSynchronizer: BackgroundService
                     catch (Exception ex)
                     {
                         // Don't stop worker in case of error
-                        using (LogContext.PushProperty(RabbitMqSyncToAsyncSink.InternalLogProperty, value: true))
-                        {
-                            _logger.Error(ex, "{ServiceName}.{MethodName}: Failed to publish message. Message will be dropped",
-                                nameof(RabbitMqBufferSynchronizer), nameof(ExecuteAsync));
-                        }
+                        _logger.Error(ex, "{ServiceName}.{MethodName}: Failed to publish message. Message will be dropped",
+                            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
                     }
                 }
 
@@ -71,19 +65,13 @@ public class RabbitMqBufferSynchronizer: BackgroundService
             }
             catch (Exception ex)
             {
-                using (LogContext.PushProperty(RabbitMqSyncToAsyncSink.InternalLogProperty, value: true))
-                {
-                    _logger.Error(ex, "{ServiceName}.{MethodName}: Exception thrown",
-                        nameof(RabbitMqBufferSynchronizer), nameof(ExecuteAsync));
-                }
+                _logger.Error(ex, "{ServiceName}.{MethodName}: Exception thrown",
+                    nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
             }
         }
 
-        using (LogContext.PushProperty(RabbitMqSyncToAsyncSink.InternalLogProperty, value: true))
-        {
-            _logger.Information("{ServiceName}.{MethodName}: BackgroundService ended",
-                nameof(RabbitMqBufferSynchronizer), nameof(ExecuteAsync));
-        }
+        _logger.Information("{ServiceName}.{MethodName}: BackgroundService ended",
+            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
     }
 
     public override void Dispose()
@@ -105,8 +93,8 @@ public class RabbitMqBufferSynchronizer: BackgroundService
         GC.SuppressFinalize(this);
     }
 
-    public static async Task<RabbitMqBufferSynchronizer> CreateNewAsync(
-        SyncToAsyncBufferQueue queue,
+    public static async Task<RabbitMqPublishBackgroundService> CreateNewAsync(
+        RabbitMqBufferQueue queue,
         RabbitMqConfiguration rabbitMqConfiguration,
         ILogger logger)
     {
@@ -133,7 +121,7 @@ public class RabbitMqBufferSynchronizer: BackgroundService
                 autoDelete: false,
                 arguments: null);
 
-            return new RabbitMqBufferSynchronizer(connection, channel, queue, rabbitMqConfiguration, logger);
+            return new RabbitMqPublishBackgroundService(connection, channel, queue, rabbitMqConfiguration, logger);
         }
         catch
         {

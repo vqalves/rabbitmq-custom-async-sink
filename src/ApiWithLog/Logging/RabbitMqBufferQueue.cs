@@ -3,14 +3,14 @@ using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
 
-public class SyncToAsyncBufferQueue
+public class RabbitMqBufferQueue
 {
     private readonly int _bufferMaxSize;
     private readonly ConcurrentQueue<byte[]> _queue;
     private readonly ILogger _logger;
     private int _currentCount;
 
-    public SyncToAsyncBufferQueue(int bufferMaxSize, ILogger logger)
+    public RabbitMqBufferQueue(int bufferMaxSize, ILogger logger)
     {
         if (bufferMaxSize <= 0)
             throw new ArgumentException("Buffer max size must be greater than zero.", nameof(bufferMaxSize));
@@ -30,7 +30,11 @@ public class SyncToAsyncBufferQueue
         {
             // Buffer is full, decrement back and drop the item
             Interlocked.Decrement(ref _currentCount);
-            Console.Error.WriteLine($"{nameof(SyncToAsyncBufferQueue)}.{nameof(Enqueue)}: Message dropped because buffer is full ({_bufferMaxSize} items)");
+            
+            _logger.Warning(
+                "{ServiceName}.{MethodName}: Message dropped because buffer is full ({bufferMaxSize} items)", 
+                nameof(RabbitMqBufferQueue), nameof(Enqueue), _bufferMaxSize);
+
             return;
         }
 

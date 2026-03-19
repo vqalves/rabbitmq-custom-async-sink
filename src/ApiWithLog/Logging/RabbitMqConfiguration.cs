@@ -1,5 +1,3 @@
-using System;
-
 namespace ApiWithLog.Logging;
 
 /// <summary>
@@ -7,32 +5,13 @@ namespace ApiWithLog.Logging;
 /// </summary>
 public class RabbitMqConfiguration
 {
-    /// <summary>
-    /// RabbitMQ host name (default: localhost)
-    /// </summary>
-    public string HostName { get; set; }
+    public string HostName { get; init; }
+    public int Port { get; init; }
+    public string UserName { get; init; }
+    public string Password { get; init; }
+    public string QueueName { get; init; }
 
-    /// <summary>
-    /// RabbitMQ port (default: 5672)
-    /// </summary>
-    public int Port { get; set; }
-
-    /// <summary>
-    /// RabbitMQ user name (default: guest)
-    /// </summary>
-    public string UserName { get; set; }
-
-    /// <summary>
-    /// RabbitMQ password (default: guest)
-    /// </summary>
-    public string Password { get; set; }
-
-    /// <summary>
-    /// Queue name where logs will be sent (default: application-logs)
-    /// </summary>
-    public string QueueName { get; set; }
-
-    public RabbitMqConfiguration(string hostName, int port, string userName, string password, string queueName)
+    private RabbitMqConfiguration(string hostName, int port, string userName, string password, string queueName)
     {
         HostName = hostName;
         Port = port;
@@ -41,44 +20,49 @@ public class RabbitMqConfiguration
         QueueName = queueName;
     }
 
-    public RabbitMqConfiguration(string connectionString, string queueName)
+    public static RabbitMqConfiguration Create(string hostName, int port, string userName, string password, string queueName)
     {
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new ArgumentException("Connection string cannot be null or empty", nameof(connectionString));
-        }
+        if (string.IsNullOrWhiteSpace(hostName))
+            throw new ArgumentException("Host name cannot be null or empty", nameof(hostName));
+
+        if (port < 1 || port > 65535)
+            throw new ArgumentOutOfRangeException(nameof(port), "Port must be between 1 and 65535");
+
+        if (string.IsNullOrWhiteSpace(userName))
+            throw new ArgumentException("User name cannot be null or empty", nameof(userName));
+
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ArgumentException("Password cannot be null or empty", nameof(password));
 
         if (string.IsNullOrWhiteSpace(queueName))
-        {
             throw new ArgumentException("Queue name cannot be null or empty", nameof(queueName));
-        }
+
+        return new RabbitMqConfiguration(hostName, port, userName, password, queueName);
+    }
+
+    public static RabbitMqConfiguration Create(string connectionString, string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new ArgumentException("Connection string cannot be null or empty", nameof(connectionString));
 
         if (!Uri.TryCreate(connectionString, UriKind.Absolute, out var uri) || uri.Scheme != "amqp")
-        {
             throw new ArgumentException("Connection string must be a valid AMQP URI (e.g., amqp://user:password@host:port)", nameof(connectionString));
-        }
 
-        // Validate and parse UserInfo (username:password)
         if (string.IsNullOrEmpty(uri.UserInfo))
-        {
             throw new ArgumentException("Connection string must include credentials (username:password)", nameof(connectionString));
-        }
 
         if (!uri.UserInfo.Contains(':'))
-        {
             throw new ArgumentException("Connection string credentials must be in 'username:password' format", nameof(connectionString));
-        }
 
         var userInfoParts = uri.UserInfo.Split(':', 2);
         if (string.IsNullOrWhiteSpace(userInfoParts[0]) || string.IsNullOrWhiteSpace(userInfoParts[1]))
-        {
             throw new ArgumentException("Both username and password must be provided in connection string", nameof(connectionString));
-        }
 
-        HostName = uri.Host;
-        Port = uri.Port > 0 ? uri.Port : 5672;
-        UserName = userInfoParts[0];
-        Password = userInfoParts[1];
-        QueueName = queueName;
+        var hostName = uri.Host;
+        var port = uri.Port > 0 ? uri.Port : 5672;
+        var userName = userInfoParts[0];
+        var password = userInfoParts[1];
+
+        return Create(hostName, port, userName, password, queueName);
     }
 }

@@ -22,7 +22,7 @@ public class LogFormatterForRabbitMQDefault : ILogFormatterForRabbitMQ
         var logMessage = logEvent.RenderMessage(_formatProvider);
 
         // Serialize to JSON
-        var logData = new LogData()
+        var logData = new
         {
             Content = logMessage
         };
