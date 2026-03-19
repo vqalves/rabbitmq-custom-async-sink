@@ -19,6 +19,7 @@ public class CustomRabbitMqSink : ILogEventSink, IDisposable
     private string _queueName;
     private string _applicationName;
     private IFormatProvider? _formatProvider;
+    private LogEventLevel _minimumLevel;
     private bool _disposed;
 
     public static async Task<CustomRabbitMqSink> CreateAsync(
@@ -28,11 +29,13 @@ public class CustomRabbitMqSink : ILogEventSink, IDisposable
         string password,
         string queueName,
         string applicationName,
+        LogEventLevel minimumLevel,
         IFormatProvider? formatProvider = null)
     {
         var sink = new CustomRabbitMqSink();
         sink._queueName = queueName;
         sink._applicationName = applicationName;
+        sink._minimumLevel = minimumLevel;
         sink._formatProvider = formatProvider;
 
         var factory = new ConnectionFactory
@@ -52,6 +55,10 @@ public class CustomRabbitMqSink : ILogEventSink, IDisposable
     public void Emit(LogEvent logEvent)
     {
         if (_disposed)
+            return;
+
+        // Check if log event meets minimum level requirement
+        if (logEvent.Level < _minimumLevel)
             return;
 
         try
@@ -110,8 +117,9 @@ public static class CustomRabbitMqSinkExtensions
     /// </summary>
     public static LoggerConfiguration CustomRabbitMq(
         this LoggerSinkConfiguration sinkConfiguration,
-        CustomRabbitMqSink sink)
+        CustomRabbitMqSink sink,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
     {
-        return sinkConfiguration.Sink(sink);
+        return sinkConfiguration.Sink(sink, restrictedToMinimumLevel);
     }
 }
