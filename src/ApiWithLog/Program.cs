@@ -8,9 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 var applicationName = Environment.GetEnvironmentVariable("LOG_APPLICATION_NAME")
     ?? builder.Environment.ApplicationName;
 
-// Configure Serilog
 var loggerConfig = new LoggerConfiguration()
-    .MinimumLevel.Debug()
+    .MinimumLevel.Information()
     .WriteTo.Console();
 
 await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
@@ -92,8 +91,10 @@ app.MapGet("/stress-log", (ILogger<Program> logger) =>
 {
     for(var i = 0; i < 1_000; i++)
         logger.LogInformation("Stress test #{testNumber}", i);
+
+    return Results.Ok();
 })
-.WithName("Error")
+.WithName("StressLog")
 .WithOpenApi();
 
 try

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
 
@@ -6,9 +7,10 @@ public class SyncToAsyncBufferQueue
 {
     private readonly int _bufferMaxSize;
     private readonly ConcurrentQueue<byte[]> _queue;
+    private readonly ILogger _logger;
     private int _currentCount;
 
-    public SyncToAsyncBufferQueue(int bufferMaxSize)
+    public SyncToAsyncBufferQueue(int bufferMaxSize, ILogger logger)
     {
         if (bufferMaxSize <= 0)
             throw new ArgumentException("Buffer max size must be greater than zero.", nameof(bufferMaxSize));
@@ -16,6 +18,7 @@ public class SyncToAsyncBufferQueue
         _bufferMaxSize = bufferMaxSize;
         _queue = new ConcurrentQueue<byte[]>();
         _currentCount = 0;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public void Enqueue(byte[] item)
