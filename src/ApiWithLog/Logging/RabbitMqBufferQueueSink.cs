@@ -56,7 +56,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         string password,
         string queueName,
         int bufferMaximumSize,
-        LogFormatterForRabbitMQDefault logFormatterForRabbitMQDefault,
+        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -72,7 +72,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
-            logFormatterForRabbitMQDefault: logFormatterForRabbitMQDefault,
+            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
             minimumLevel: minimumLevel,
             hostedServices: hostedServices
         );
@@ -83,7 +83,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         string rabbitMqConnectionString,
         string rabbitMqQueueName,
         int bufferMaximumSize,
-        LogFormatterForRabbitMQDefault logFormatterForRabbitMQDefault,
+        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -95,7 +95,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
-            logFormatterForRabbitMQDefault: logFormatterForRabbitMQDefault,
+            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
             minimumLevel: minimumLevel,
             hostedServices: hostedServices
         );
@@ -105,7 +105,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         this LoggerSinkConfiguration sinkConfiguration,
         RabbitMqConfiguration rabbitMqConfig,
         int bufferMaximumSize,
-        LogFormatterForRabbitMQDefault logFormatterForRabbitMQDefault,
+        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -121,7 +121,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
 
         var sink = new RabbitMqBufferQueueSink(
             buffer: bufferQueue,
-            logFormatterForRabbitMQ: logFormatterForRabbitMQDefault,
+            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
             minimumLevel: minimumLevel,
             logger: bootstrapLogger
         );

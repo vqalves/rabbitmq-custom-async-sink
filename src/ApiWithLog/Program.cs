@@ -8,29 +8,21 @@ using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var loggerConfig = new LoggerConfiguration()
-    .MinimumLevel.Verbose()
-    .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information);
-
 var rabbitMqConnectionString = "amqp://guest:guest@localhost:5672";
 
-builder.Services.RegisterResponseRequestMiddlewareDependencies(
-    bufferMaxSize: 100,
-    rabbitMqConnectionString: rabbitMqConnectionString,
-    rabbitMqQueueName: "request-response-logs"
-);
-
-loggerConfig.WriteTo.RabbitMQWithBackgroundService(
-    rabbitMqConnectionString: rabbitMqConnectionString,
-    rabbitMqQueueName: "application-logs",
-    bufferMaximumSize: 700,
-    logFormatterForRabbitMQDefault: new LogFormatterForRabbitMQDefault(
-        formatProvider: null
-    ),
-    minimumLevel: LogEventLevel.Debug,
-    hostedServices: builder.Services);
-
-
+var loggerConfig = new LoggerConfiguration()
+    .MinimumLevel.Verbose()
+    .WriteTo.Console(
+        restrictedToMinimumLevel: LogEventLevel.Information)
+    .WriteTo.RabbitMQWithBackgroundService(
+        rabbitMqConnectionString: rabbitMqConnectionString,
+        rabbitMqQueueName: "application-logs",
+        bufferMaximumSize: 700,
+        logFormatterForRabbitMQ: new LogFormatterForRabbitMQDefault(
+            formatProvider: null
+        ),
+        minimumLevel: LogEventLevel.Debug,
+        hostedServices: builder.Services);
 
 Log.Logger = loggerConfig.CreateLogger();
 
@@ -41,6 +33,16 @@ builder.Host.UseSerilog();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.RegisterResponseRequestMiddlewareDependencies(
+    bufferMaxSize: 100,
+    rabbitMqConnectionString: rabbitMqConnectionString,
+    rabbitMqQueueName: "request-response-logs"
+);
+
+// Register exception handler
+builder.Services.AddExceptionHandler<UnhandledExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -50,7 +52,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseMiddleware<RegisterResponseRequestMiddleware>();
+app.UseMiddleware<RegisterResponseRequestMiddleware>(); // RegisterResponseRequestMiddleware must be declared before everyone else (outer layer)
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
