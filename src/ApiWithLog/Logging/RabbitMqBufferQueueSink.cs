@@ -1,9 +1,7 @@
 using Serilog;
 using Serilog.Configuration;
-using Serilog.Context;
 using Serilog.Core;
 using Serilog.Events;
-using Serilog.Filters;
 using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
@@ -50,7 +48,7 @@ public class RabbitMqBufferQueueSink : ILogEventSink
 
 public static class RabbitMqSyncToAsyncSinkExtensions
 {
-    public static async Task RabbitMQWithBackgroundServiceAsync(
+    public static LoggerConfiguration RabbitMQWithBackgroundService(
         this LoggerSinkConfiguration sinkConfiguration,
         string hostName,
         int port,
@@ -65,12 +63,12 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         var rabbitMqConfig = RabbitMqConfiguration.Create(
             hostName: hostName,
             port: port,
-            userName: userName, 
-            password: password, 
+            userName: userName,
+            password: password,
             queueName: queueName
         );
 
-        await RabbitMQWithBackgroundServiceAsync(
+        return RabbitMQWithBackgroundService(
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
@@ -80,7 +78,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         );
     }
 
-    public static async Task RabbitMQWithBackgroundServiceAsync(
+    public static LoggerConfiguration RabbitMQWithBackgroundService(
         this LoggerSinkConfiguration sinkConfiguration,
         string rabbitMqConnectionString,
         string rabbitMqQueueName,
@@ -93,7 +91,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             connectionString: rabbitMqConnectionString,
             queueName: rabbitMqQueueName);
 
-        await RabbitMQWithBackgroundServiceAsync(
+        return RabbitMQWithBackgroundService(
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
@@ -103,7 +101,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         );
     }
 
-    public static async Task RabbitMQWithBackgroundServiceAsync(
+    public static LoggerConfiguration RabbitMQWithBackgroundService(
         this LoggerSinkConfiguration sinkConfiguration,
         RabbitMqConfiguration rabbitMqConfig,
         int bufferMaximumSize,
@@ -128,14 +126,15 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             logger: bootstrapLogger
         );
 
-        var syncWorker = await RabbitMqPublishBackgroundService.CreateNewAsync(
-            "Logging BackgroundService",
+        var syncWorker = new RabbitMqPublishBackgroundServiceWrapper<RabbitMqBufferQueueSink>(
+            serviceName: "Logging BackgroundService",
             queue: bufferQueue,
             rabbitMqConfiguration: rabbitMqConfig,
             logger: bootstrapLogger);
 
-        sinkConfiguration.Sink(sink, minimumLevel);
-
+        var result = sinkConfiguration.Sink(sink, minimumLevel);
         hostedServices.AddHostedService(p => syncWorker);
+
+        return result;
     }
 }

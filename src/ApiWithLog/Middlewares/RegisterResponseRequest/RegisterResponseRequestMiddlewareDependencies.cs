@@ -38,13 +38,13 @@ public class RegisterResponseRequestMiddlewareDependencies
         Queue.Enqueue(bytes);
     }
 
-    public async Task<RabbitMqPublishBackgroundService> CreatePublisherBackgroundServiceAsync(
+    public RabbitMqPublishBackgroundServiceWrapper<RegisterResponseRequestMiddlewareDependencies> CreatePublisherBackgroundService(
         RabbitMqConfiguration rabbitMqConfiguration)
     {
-        var result = await RabbitMqPublishBackgroundService.CreateNewAsync(
+        var result = new RabbitMqPublishBackgroundServiceWrapper<RegisterResponseRequestMiddlewareDependencies>(
             serviceName: "RequestResponse BackgroundService",
-            queue: Queue, 
-            rabbitMqConfiguration: rabbitMqConfiguration, 
+            queue: Queue,
+            rabbitMqConfiguration: rabbitMqConfiguration,
             logger: SerilogLogger);
 
         return result;
@@ -53,10 +53,10 @@ public class RegisterResponseRequestMiddlewareDependencies
 
 public static class RegisterResponseRequestMiddlewareDependenciesExtensions
 {
-    public static async Task RegisterResponseRequestMiddlewareDependenciesAsync(
+    public static void RegisterResponseRequestMiddlewareDependencies(
         this IServiceCollection serviceCollection,
         int bufferMaxSize,
-        string rabbitMqHostName, 
+        string rabbitMqHostName,
         int rabbitMqPort,
         string rabbitMqUserName,
         string rabbitMqPassword,
@@ -64,10 +64,10 @@ public static class RegisterResponseRequestMiddlewareDependenciesExtensions
     )
     {
         var rabbitConfig = RabbitMqConfiguration.Create(rabbitMqHostName, rabbitMqPort, rabbitMqUserName, rabbitMqPassword, rabbitMqQueueName);
-        await RegisterResponseRequestMiddlewareDependenciesAsync(serviceCollection, bufferMaxSize, rabbitConfig);
+        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig);
     }
 
-    public static async Task RegisterResponseRequestMiddlewareDependenciesAsync(
+    public static void RegisterResponseRequestMiddlewareDependencies(
         this IServiceCollection serviceCollection,
         int bufferMaxSize,
         string rabbitMqConnectionString,
@@ -75,22 +75,25 @@ public static class RegisterResponseRequestMiddlewareDependenciesExtensions
     )
     {
         var rabbitConfig = RabbitMqConfiguration.Create(rabbitMqConnectionString, rabbitMqQueueName);
-        await RegisterResponseRequestMiddlewareDependenciesAsync(serviceCollection, bufferMaxSize, rabbitConfig);
+        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig);
     }
 
-    public static async Task RegisterResponseRequestMiddlewareDependenciesAsync(
+    public static void RegisterResponseRequestMiddlewareDependencies(
         this IServiceCollection serviceCollection,
         int bufferMaxSize,
         RabbitMqConfiguration rabbitMqConfig
     )
     {
-        var sp = serviceCollection.BuildServiceProvider();
+        serviceCollection.AddSingleton(p =>
+        {
+            var logger = p.GetRequiredService<ILogger<RegisterResponseRequestMiddlewareDependencies>>();
+            return new RegisterResponseRequestMiddlewareDependencies(bufferMaxSize, logger);
+        });
 
-        var logger = sp.GetRequiredService<ILogger<RegisterResponseRequestMiddlewareDependencies>>();
-        var dependencies = new RegisterResponseRequestMiddlewareDependencies(bufferMaxSize, logger);
-        var publisherService = await dependencies.CreatePublisherBackgroundServiceAsync(rabbitMqConfig);
-
-        serviceCollection.AddSingleton(dependencies);
-        serviceCollection.AddHostedService(p => publisherService);
+        serviceCollection.AddHostedService(p =>
+        {
+            var dependencies = p.GetRequiredService<RegisterResponseRequestMiddlewareDependencies>();
+            return dependencies.CreatePublisherBackgroundService(rabbitMqConfig);
+        });
     }
 }

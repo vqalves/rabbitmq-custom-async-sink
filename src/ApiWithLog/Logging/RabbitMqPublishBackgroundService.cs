@@ -4,30 +4,75 @@ using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
 
-public class RabbitMqPublishBackgroundService: BackgroundService
+public class RabbitMqPublishBackgroundService : BackgroundService
 {
     private readonly RabbitMqBufferQueue _queue;
     private readonly RabbitMqConfiguration _rabbitMqConfiguration;
     private readonly string _serviceName;
-    private readonly IConnection _connection;
-    private readonly IChannel _channel;
     private readonly ILogger _logger;
+    private IConnection? _connection;
+    private IChannel? _channel;
     private bool _disposed;
 
-    private RabbitMqPublishBackgroundService(
+    public RabbitMqPublishBackgroundService(
         string serviceName,
-        IConnection connection,
-        IChannel channel,
         RabbitMqBufferQueue queue,
         RabbitMqConfiguration rabbitMqConfiguration,
         ILogger logger)
     {
         _serviceName = serviceName;
-        _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _rabbitMqConfiguration = rabbitMqConfiguration ?? throw new ArgumentNullException(nameof(rabbitMqConfiguration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var factory = new ConnectionFactory
+        {
+            HostName = _rabbitMqConfiguration.HostName,
+            Port = _rabbitMqConfiguration.Port,
+            UserName = _rabbitMqConfiguration.UserName,
+            Password = _rabbitMqConfiguration.Password
+        };
+
+        try
+        {
+            _connection = await factory.CreateConnectionAsync(cancellationToken);
+            _channel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
+
+            await base.StartAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "{ServiceName}: Failed to initialize RabbitMQ connection", _serviceName);
+
+            // Clean up partial resources
+            try { _channel?.Dispose(); }
+            catch { /* Ignore disposal errors */ }
+
+            try { _connection?.Dispose(); }
+            catch { /* Ignore disposal errors */ }
+
+            _channel = null;
+            _connection = null;
+
+            throw;
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+
+        try { _channel?.Dispose(); }
+        catch { }
+
+        try { _connection?.Dispose(); }
+        catch { }
+
+        _channel = null;
+        _connection = null;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -47,6 +92,12 @@ public class RabbitMqPublishBackgroundService: BackgroundService
                 {
                     try
                     {
+                        if (_channel == null)
+                        {
+                            _logger.Warning("{ServiceName}: Channel is null, message will be dropped", _serviceName);
+                            continue;
+                        }
+
                         await _channel.BasicPublishAsync(
                             exchange: string.Empty,
                             routingKey: _rabbitMqConfiguration.QueueName,
@@ -92,45 +143,4 @@ public class RabbitMqPublishBackgroundService: BackgroundService
         GC.SuppressFinalize(this);
     }
 
-    public static async Task<RabbitMqPublishBackgroundService> CreateNewAsync(
-        string serviceName,
-        RabbitMqBufferQueue queue,
-        RabbitMqConfiguration rabbitMqConfiguration,
-        ILogger logger)
-    {
-        var factory = new ConnectionFactory
-        {
-            HostName = rabbitMqConfiguration.HostName,
-            Port = rabbitMqConfiguration.Port,
-            UserName = rabbitMqConfiguration.UserName,
-            Password = rabbitMqConfiguration.Password
-        };
-
-        IConnection? connection = null;
-        IChannel? channel = null;
-
-        try
-        {
-            connection = await factory.CreateConnectionAsync();
-            channel = await connection.CreateChannelAsync();
-
-            return new RabbitMqPublishBackgroundService(
-                serviceName,
-                connection,
-                channel,
-                queue,
-                rabbitMqConfiguration,
-                logger);
-        }
-        catch
-        {
-            try { channel?.Dispose(); }
-            catch { /* Ignore disposal errors during rollback */ }
-
-            try { connection?.Dispose(); }
-            catch { /* Ignore disposal errors during rollback */ }
-
-            throw;
-        }
-    }
 }

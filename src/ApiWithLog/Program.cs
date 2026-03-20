@@ -14,7 +14,13 @@ var loggerConfig = new LoggerConfiguration()
 
 var rabbitMqConnectionString = "amqp://guest:guest@localhost:5672";
 
-await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
+builder.Services.RegisterResponseRequestMiddlewareDependencies(
+    bufferMaxSize: 100,
+    rabbitMqConnectionString: rabbitMqConnectionString,
+    rabbitMqQueueName: "request-response-logs"
+);
+
+loggerConfig.WriteTo.RabbitMQWithBackgroundService(
     rabbitMqConnectionString: rabbitMqConnectionString,
     rabbitMqQueueName: "application-logs",
     bufferMaximumSize: 700,
@@ -24,15 +30,11 @@ await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
     minimumLevel: LogEventLevel.Debug,
     hostedServices: builder.Services);
 
+
+
 Log.Logger = loggerConfig.CreateLogger();
 
 builder.Host.UseSerilog();
-
-await builder.Services.RegisterResponseRequestMiddlewareDependenciesAsync(
-    bufferMaxSize: 100,
-    rabbitMqConnectionString: rabbitMqConnectionString,
-    rabbitMqQueueName: "request-response-logs"
-);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
