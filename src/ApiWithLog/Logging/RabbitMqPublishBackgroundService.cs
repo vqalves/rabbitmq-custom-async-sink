@@ -8,18 +8,21 @@ public class RabbitMqPublishBackgroundService: BackgroundService
 {
     private readonly RabbitMqBufferQueue _queue;
     private readonly RabbitMqConfiguration _rabbitMqConfiguration;
+    private readonly string _serviceName;
     private readonly IConnection _connection;
     private readonly IChannel _channel;
     private readonly ILogger _logger;
     private bool _disposed;
 
     private RabbitMqPublishBackgroundService(
+        string serviceName,
         IConnection connection,
         IChannel channel,
         RabbitMqBufferQueue queue,
         RabbitMqConfiguration rabbitMqConfiguration,
         ILogger logger)
     {
+        _serviceName = serviceName;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
@@ -29,8 +32,7 @@ public class RabbitMqPublishBackgroundService: BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.Information("{ServiceName}.{MethodName}: BackgroundService started",
-            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
+        _logger.Information("{ServiceName}: BackgroundService started", _serviceName);
 
         var properties = new BasicProperties
         {
@@ -56,8 +58,7 @@ public class RabbitMqPublishBackgroundService: BackgroundService
                     catch (Exception ex)
                     {
                         // Don't stop worker in case of error
-                        _logger.Error(ex, "{ServiceName}.{MethodName}: Failed to publish message. Message will be dropped",
-                            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
+                        _logger.Error(ex, "{ServiceName}: Failed to publish message. Message will be dropped", _serviceName);
                     }
                 }
 
@@ -65,13 +66,11 @@ public class RabbitMqPublishBackgroundService: BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "{ServiceName}.{MethodName}: Exception thrown",
-                    nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
+                _logger.Error(ex, "{ServiceName}: Exception thrown", _serviceName);
             }
         }
 
-        _logger.Information("{ServiceName}.{MethodName}: BackgroundService ended",
-            nameof(RabbitMqPublishBackgroundService), nameof(ExecuteAsync));
+        _logger.Information("{ServiceName}: BackgroundService ended", _serviceName);
     }
 
     public override void Dispose()
@@ -94,6 +93,7 @@ public class RabbitMqPublishBackgroundService: BackgroundService
     }
 
     public static async Task<RabbitMqPublishBackgroundService> CreateNewAsync(
+        string serviceName,
         RabbitMqBufferQueue queue,
         RabbitMqConfiguration rabbitMqConfiguration,
         ILogger logger)
@@ -114,14 +114,13 @@ public class RabbitMqPublishBackgroundService: BackgroundService
             connection = await factory.CreateConnectionAsync();
             channel = await connection.CreateChannelAsync();
 
-            await channel.QueueDeclareAsync(
-                queue: rabbitMqConfiguration.QueueName,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null);
-
-            return new RabbitMqPublishBackgroundService(connection, channel, queue, rabbitMqConfiguration, logger);
+            return new RabbitMqPublishBackgroundService(
+                serviceName,
+                connection,
+                channel,
+                queue,
+                rabbitMqConfiguration,
+                logger);
         }
         catch
         {

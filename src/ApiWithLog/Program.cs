@@ -1,4 +1,8 @@
+using System.Net.Http.Headers;
 using ApiWithLog.Logging;
+using ApiWithLog.Middlewares;
+using ApiWithLog.Middlewares.RegisterResponseRequest;
+using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using Serilog.Events;
 
@@ -8,12 +12,11 @@ var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Verbose()
     .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information);
 
+var rabbitMqConnectionString = "amqp://guest:guest@localhost:5672";
+
 await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
-    hostName: "localhost",
-    port: 5672,
-    userName: "guest",
-    password: "guest",
-    queueName: "application-logs",
+    rabbitMqConnectionString: rabbitMqConnectionString,
+    rabbitMqQueueName: "application-logs",
     bufferMaximumSize: 700,
     logFormatterForRabbitMQDefault: new LogFormatterForRabbitMQDefault(
         formatProvider: null
@@ -24,6 +27,12 @@ await loggerConfig.WriteTo.RabbitMQWithBackgroundServiceAsync(
 Log.Logger = loggerConfig.CreateLogger();
 
 builder.Host.UseSerilog();
+
+await builder.Services.RegisterResponseRequestMiddlewareDependenciesAsync(
+    bufferMaxSize: 100,
+    rabbitMqConnectionString: rabbitMqConnectionString,
+    rabbitMqQueueName: "request-response-logs"
+);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -38,6 +47,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseMiddleware<RegisterResponseRequestMiddleware>();
 
 app.UseHttpsRedirection();
 
@@ -91,6 +102,13 @@ app.MapGet("/stress-log", (ILogger<Program> logger) =>
     return Results.Ok();
 })
 .WithName("StressLog")
+.WithOpenApi();
+
+app.MapPost("/post", ([FromBody] PostData postData, ILogger<Program> logger) =>
+{
+    return Results.Content($"Your post was: '{postData.content}'", "text/plain");
+})
+.WithName("Post")
 .WithOpenApi();
 
 try

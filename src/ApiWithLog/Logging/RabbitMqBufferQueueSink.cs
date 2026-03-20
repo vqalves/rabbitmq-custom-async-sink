@@ -117,6 +117,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             .CreateLogger();
 
         var bufferQueue = new RabbitMqBufferQueue(
+            bufferQueueName: "Logging Buffer",
             bufferMaxSize: bufferMaximumSize,
             logger: bootstrapLogger);
 
@@ -128,6 +129,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         );
 
         var syncWorker = await RabbitMqPublishBackgroundService.CreateNewAsync(
+            "Logging BackgroundService",
             queue: bufferQueue,
             rabbitMqConfiguration: rabbitMqConfig,
             logger: bootstrapLogger);

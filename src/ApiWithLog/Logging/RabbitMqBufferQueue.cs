@@ -5,16 +5,18 @@ namespace ApiWithLog.Logging;
 
 public class RabbitMqBufferQueue
 {
+    private readonly string _bufferQueueName;
     private readonly int _bufferMaxSize;
     private readonly ConcurrentQueue<byte[]> _queue;
     private readonly ILogger _logger;
     private int _currentCount;
 
-    public RabbitMqBufferQueue(int bufferMaxSize, ILogger logger)
+    public RabbitMqBufferQueue(string bufferQueueName, int bufferMaxSize, ILogger logger)
     {
         if (bufferMaxSize <= 0)
             throw new ArgumentException("Buffer max size must be greater than zero.", nameof(bufferMaxSize));
-
+        
+        _bufferQueueName = bufferQueueName;
         _bufferMaxSize = bufferMaxSize;
         _queue = new ConcurrentQueue<byte[]>();
         _currentCount = 0;
@@ -32,8 +34,8 @@ public class RabbitMqBufferQueue
             Interlocked.Decrement(ref _currentCount);
             
             _logger.Warning(
-                "{ServiceName}.{MethodName}: Message dropped because buffer is full ({bufferMaxSize} items)", 
-                nameof(RabbitMqBufferQueue), nameof(Enqueue), _bufferMaxSize);
+                "{ServiceName}: Message dropped because buffer is full ({bufferMaxSize} items)", 
+                _bufferQueueName, _bufferMaxSize);
 
             return;
         }
