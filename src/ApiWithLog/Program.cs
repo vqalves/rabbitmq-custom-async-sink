@@ -1,14 +1,18 @@
-using System.Net.Http.Headers;
 using ApiWithLog.Logging;
 using ApiWithLog.Middlewares;
-using ApiWithLog.Middlewares.RegisterResponseRequest;
-using Microsoft.AspNetCore.Mvc;
+using ApiWithLogger.Middlewares.RegisterResponseRequest;
 using Serilog;
 using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var rabbitMqConnectionString = "amqp://guest:guest@localhost:5672";
+
+// #####################################
+//
+//  Configure Serilog
+//
+// #####################################
 
 var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Verbose()
@@ -18,119 +22,130 @@ var loggerConfig = new LoggerConfiguration()
         rabbitMqConnectionString: rabbitMqConnectionString,
         rabbitMqQueueName: "application-logs",
         bufferMaximumSize: 700,
-        logFormatterForRabbitMQ: new LogFormatterForRabbitMQDefault(
-            formatProvider: null
-        ),
-        minimumLevel: LogEventLevel.Debug,
+        logFormatter: new RabbitMqMessageFormatterDefault(formatProvider: null),
+        minimumLevel: LogEventLevel.Error,
         hostedServices: builder.Services);
 
 Log.Logger = loggerConfig.CreateLogger();
 
 builder.Host.UseSerilog();
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// Opcional: Se estiver usando ILogger (sem generics) na inje��o de depend�ncia, pode ser necess�rio registrar
+// builder.Services.AddSingleton<Microsoft.Extensions.Logging.ILogger>(p => p.GetRequiredService<ILogger<object>>());
+
+
+
+
+
+// #####################################
+//
+//  Configura��o Swagger
+//
+// #####################################
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+
+
+
+
+// #####################################
+//
+//  Configura��o Response/Request Middleware (h� mais sess�es abaixo)
+//
+// #####################################
 
 builder.Services.RegisterResponseRequestMiddlewareDependencies(
     bufferMaxSize: 100,
     rabbitMqConnectionString: rabbitMqConnectionString,
-    rabbitMqQueueName: "request-response-logs"
+    rabbitMqQueueName: "request-response-logs",
+    messageFormatter: new RegisterResponseRequestMessageFormatter()
 );
 
-// Register exception handler
+
+
+// #####################################
+//
+//  Configura��o Exception Middleware (h� mais sess�es abaixo)
+//
+// #####################################
+
 builder.Services.AddExceptionHandler<UnhandledExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+
+
+
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// #####################################
+//
+//  Configure Swagger
+//
+// #####################################
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseMiddleware<RegisterResponseRequestMiddleware>(); // RegisterResponseRequestMiddleware must be declared before everyone else (outer layer)
+// #####################################
+//
+//  Configura��o Response/Request Middleware
+//
+// #####################################
+
+// Deve ser declarado antes dos outros Middlewares
+app.UseMiddleware<RegisterResponseRequestMiddleware>();
+
+
+// #####################################
+//
+//  Configura��o Exception Middleware
+//
+// #####################################
 app.UseExceptionHandler();
+
+
+
+
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapGet("/", () =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    return "Hello World!";
+});
 
-app.MapGet("/weatherforecast", (ILogger<Program> logger) =>
+app.MapGet("/log-info", (ILogger<Program> log) =>
 {
-    logger.LogInformation("WeatherForecast endpoint called");
-
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-
-    logger.LogDebug("Generated {ForecastCount} weather forecasts", forecast.Length);
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
-
-app.MapGet("/error", (ILogger<Program> logger) =>
-{
-    try
-    {
-        var val1 = 0;
-        var val2 = 0;
-        var val3 = val1 / val2;
-        return val3;
-    }
-    catch(Exception ex)
-    {
-        logger.LogError(ex, "Error happened");
-        throw;
-    }
-})
-.WithName("Error")
-.WithOpenApi();
-
-app.MapGet("/stress-log", (ILogger<Program> logger) =>
-{
-    for(var i = 0; i < 1_000; i++)
-        logger.LogDebug("Stress test #{testNumber}", i);
+    log.LogInformation("[Information] Standalone log in {CurrentDate}", DateTime.Now);
 
     return Results.Ok();
-})
-.WithName("StressLog")
-.WithOpenApi();
+});
 
-app.MapPost("/post", ([FromBody] PostData postData, ILogger<Program> logger) =>
+app.MapGet("/exception", () =>
 {
-    return Results.Content($"Your post was: '{postData.content}'", "text/plain");
-})
-.WithName("Post")
-.WithOpenApi();
+    throw new NotImplementedException();
+});
 
-try
+app.MapGet("/example-request", () =>
 {
-    Log.Information("Starting web application");
-    app.Run();
-}
-catch (Exception ex)
-{
-    Log.Fatal(ex, "Application terminated unexpectedly");
-}
-finally
-{
-    Log.CloseAndFlush();
-}
+    return "Exemplo de request";
+});
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+app.MapGet("/dump", (ILogger<Program> log) =>
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+    log.LogTrace("[Trace] Logged in {CurrentDate}", DateTime.Now);
+    log.LogDebug("[Debug] Logged in {CurrentDate}", DateTime.Now);
+    log.LogInformation("[Information] Logged in {CurrentDate}", DateTime.Now);
+    log.LogWarning("[Warning] Logged in {CurrentDate}", DateTime.Now);
+    log.LogError("[Error] Logged in {CurrentDate}", DateTime.Now);
+    log.LogCritical("[Critical] Logged in {CurrentDate}", DateTime.Now);
+
+    throw new NotImplementedException();
+});
+
+app.Run();

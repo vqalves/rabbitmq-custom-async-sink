@@ -1,7 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Configuration;
 using Serilog.Core;
 using Serilog.Events;
+using Serilog.Filters;
 using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
@@ -13,17 +15,17 @@ public class RabbitMqBufferQueueSink : ILogEventSink
 {
     private readonly RabbitMqBufferQueue _buffer;
     private readonly LogEventLevel _minimumLevel;
-    private readonly ILogFormatterForRabbitMQ _logFormatterForRabbitMQ;
+    private readonly IRabbitMqMessageFormatter<LogEvent> _logFormatter;
     private readonly ILogger _logger;
 
     public RabbitMqBufferQueueSink(
         RabbitMqBufferQueue buffer,
-        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
+        IRabbitMqMessageFormatter<LogEvent> logFormatter,
         LogEventLevel minimumLevel,
         ILogger logger)
     {
         _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
-        _logFormatterForRabbitMQ = logFormatterForRabbitMQ ?? throw new ArgumentNullException(nameof(logFormatterForRabbitMQ));
+        _logFormatter = logFormatter ?? throw new ArgumentNullException(nameof(logFormatter));
         _minimumLevel = minimumLevel;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -36,7 +38,7 @@ public class RabbitMqBufferQueueSink : ILogEventSink
 
         try
         {
-            var messageData = _logFormatterForRabbitMQ.Format(logEvent);
+            var messageData = _logFormatter.Format(logEvent);
             _buffer.Enqueue(messageData);
         }
         catch (Exception ex)
@@ -56,7 +58,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         string password,
         string queueName,
         int bufferMaximumSize,
-        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
+        IRabbitMqMessageFormatter<LogEvent> logFormatter,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -72,7 +74,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
-            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
+            logFormatter: logFormatter,
             minimumLevel: minimumLevel,
             hostedServices: hostedServices
         );
@@ -83,7 +85,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         string rabbitMqConnectionString,
         string rabbitMqQueueName,
         int bufferMaximumSize,
-        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
+        IRabbitMqMessageFormatter<LogEvent> logFormatter,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -95,7 +97,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             sinkConfiguration: sinkConfiguration,
             rabbitMqConfig: rabbitMqConfig,
             bufferMaximumSize: bufferMaximumSize,
-            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
+            logFormatter: logFormatter,
             minimumLevel: minimumLevel,
             hostedServices: hostedServices
         );
@@ -105,7 +107,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
         this LoggerSinkConfiguration sinkConfiguration,
         RabbitMqConfiguration rabbitMqConfig,
         int bufferMaximumSize,
-        ILogFormatterForRabbitMQ logFormatterForRabbitMQ,
+        IRabbitMqMessageFormatter<LogEvent> logFormatter,
         LogEventLevel minimumLevel,
         IServiceCollection hostedServices)
     {
@@ -121,7 +123,7 @@ public static class RabbitMqSyncToAsyncSinkExtensions
 
         var sink = new RabbitMqBufferQueueSink(
             buffer: bufferQueue,
-            logFormatterForRabbitMQ: logFormatterForRabbitMQ,
+            logFormatter: logFormatter,
             minimumLevel: minimumLevel,
             logger: bootstrapLogger
         );
@@ -132,7 +134,17 @@ public static class RabbitMqSyncToAsyncSinkExtensions
             rabbitMqConfiguration: rabbitMqConfig,
             logger: bootstrapLogger);
 
-        var result = sinkConfiguration.Sink(sink, minimumLevel);
+        var result = sinkConfiguration.Logger(p =>
+        {
+            p
+             .Filter.ByExcluding(Matching.FromSource("System"))
+             .Filter.ByExcluding(Matching.FromSource("Microsoft"))
+             .Filter.ByExcluding(Matching.FromSource("Microsoft.AspNetCore"))
+             .Filter.ByExcluding(Matching.FromSource("Microsoft.AspNetCore.Hosting.Diagnostics"))
+             .Filter.ByExcluding(Matching.FromSource("Microsoft.Extensions.Hosting.Internal.Host"))
+             .WriteTo.Sink(sink, minimumLevel);
+        });
+
         hostedServices.AddHostedService(p => syncWorker);
 
         return result;

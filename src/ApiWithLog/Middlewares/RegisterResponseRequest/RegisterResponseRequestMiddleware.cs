@@ -1,11 +1,14 @@
+using Microsoft.AspNetCore.Http;
+using System.Diagnostics;
 using System.Text;
 
-namespace ApiWithLog.Middlewares.RegisterResponseRequest;
+namespace ApiWithLogger.Middlewares.RegisterResponseRequest;
 
 public class RegisterResponseRequestMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly RegisterResponseRequestMiddlewareDependencies _dependencies;
+    private readonly List<string> IgnoredPathes;
 
     public RegisterResponseRequestMiddleware(
         RequestDelegate next, 
@@ -13,10 +16,27 @@ public class RegisterResponseRequestMiddleware
     {
         _next = next;
         _dependencies = dependencies;
+
+        IgnoredPathes = new()
+        {
+            "/health",
+            "/swagger"
+        };
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
+        if (context.Request.Path.HasValue)
+        {
+            if(IgnoredPathes.Any(ignoredPath => context.Request.Path.Value.Contains(ignoredPath, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                await _next(context);
+                return;
+            }
+        }
+
+        Stopwatch st = Stopwatch.StartNew();
+
         // Enable request buffering to allow multiple reads of the request body
         context.Request.EnableBuffering();
 
@@ -24,7 +44,8 @@ public class RegisterResponseRequestMiddleware
         var requestBody = await ReadRequestBodyAsync(context.Request);
 
         // Capture the full URL
-        var url = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}";
+        var url = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}";
+        var queryString = $"{context.Request.QueryString}";
 
         // Store the original response body stream
         var originalResponseBody = context.Response.Body;
@@ -45,6 +66,8 @@ public class RegisterResponseRequestMiddleware
             var capturedData = new RegisterResponseRequestMiddlewareData
             (
                 url: url,
+                queryString: queryString,
+                duration: st.ElapsedMilliseconds,
                 request: requestBody,
                 response: responseBody
             );

@@ -1,20 +1,23 @@
 using System.Text;
 using System.Text.Json;
 using ApiWithLog.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Core;
 using Serilog.Sinks.ILogger;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
-namespace ApiWithLog.Middlewares.RegisterResponseRequest;
+namespace ApiWithLogger.Middlewares.RegisterResponseRequest;
 
 public class RegisterResponseRequestMiddlewareDependencies
 {
     private readonly Logger SerilogLogger;
     private readonly RabbitMqBufferQueue Queue;
     private readonly JsonSerializerOptions Options;
+    private readonly IRabbitMqMessageFormatter<RegisterResponseRequestMiddlewareData> MessageFormatter;
 
-    public RegisterResponseRequestMiddlewareDependencies(int bufferMaxSize, ILogger logger)
+    public RegisterResponseRequestMiddlewareDependencies(int bufferMaxSize, ILogger logger, IRabbitMqMessageFormatter<RegisterResponseRequestMiddlewareData> messageFormatter)
     {
         SerilogLogger = new LoggerConfiguration()
             .WriteTo.ILogger(logger)
@@ -29,12 +32,13 @@ public class RegisterResponseRequestMiddlewareDependencies
         {
             WriteIndented = false
         };
+
+        MessageFormatter = messageFormatter;
     }
 
     public void Register(RegisterResponseRequestMiddlewareData data)
     {
-        var json = JsonSerializer.Serialize(data, Options);
-        var bytes = Encoding.UTF8.GetBytes(json);
+        var bytes = MessageFormatter.Format(data);
         Queue.Enqueue(bytes);
     }
 
@@ -60,34 +64,37 @@ public static class RegisterResponseRequestMiddlewareDependenciesExtensions
         int rabbitMqPort,
         string rabbitMqUserName,
         string rabbitMqPassword,
-        string rabbitMqQueueName
+        string rabbitMqQueueName,
+        IRabbitMqMessageFormatter<RegisterResponseRequestMiddlewareData> messageFormatter
     )
     {
         var rabbitConfig = RabbitMqConfiguration.Create(rabbitMqHostName, rabbitMqPort, rabbitMqUserName, rabbitMqPassword, rabbitMqQueueName);
-        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig);
+        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig, messageFormatter);
     }
 
     public static void RegisterResponseRequestMiddlewareDependencies(
         this IServiceCollection serviceCollection,
         int bufferMaxSize,
         string rabbitMqConnectionString,
-        string rabbitMqQueueName
+        string rabbitMqQueueName,
+        IRabbitMqMessageFormatter<RegisterResponseRequestMiddlewareData> messageFormatter
     )
     {
         var rabbitConfig = RabbitMqConfiguration.Create(rabbitMqConnectionString, rabbitMqQueueName);
-        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig);
+        RegisterResponseRequestMiddlewareDependencies(serviceCollection, bufferMaxSize, rabbitConfig, messageFormatter);
     }
 
     public static void RegisterResponseRequestMiddlewareDependencies(
         this IServiceCollection serviceCollection,
         int bufferMaxSize,
-        RabbitMqConfiguration rabbitMqConfig
+        RabbitMqConfiguration rabbitMqConfig,
+        IRabbitMqMessageFormatter<RegisterResponseRequestMiddlewareData> messageFormatter
     )
     {
         serviceCollection.AddSingleton(p =>
         {
             var logger = p.GetRequiredService<ILogger<RegisterResponseRequestMiddlewareDependencies>>();
-            return new RegisterResponseRequestMiddlewareDependencies(bufferMaxSize, logger);
+            return new RegisterResponseRequestMiddlewareDependencies(bufferMaxSize, logger, messageFormatter);
         });
 
         serviceCollection.AddHostedService(p =>

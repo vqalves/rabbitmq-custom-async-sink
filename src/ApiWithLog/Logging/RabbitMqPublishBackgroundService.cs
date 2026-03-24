@@ -1,5 +1,5 @@
+using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
-using Serilog.Context;
 using ILogger = Serilog.ILogger;
 
 namespace ApiWithLog.Logging;
